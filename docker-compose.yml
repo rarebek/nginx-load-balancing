@@ -2,27 +2,31 @@ services:
   app1:
     build: .
     environment:
-      - MONGODB_URI=mongodb://mongodb:27017/myapp
+      - MONGODB_URI=mongodb://mongodb-primary:27017,mongodb-secondary1:27017,mongodb-secondary2:27017/myapp?replicaSet=rs0
       - APP_ID=app1
     networks:
       - app-network
     depends_on:
-      - mongodb
+      - mongodb-primary
+      - mongodb-setup
 
   app2:
     build: .
     environment:
-      - MONGODB_URI=mongodb://mongodb:27017/myapp
+      - MONGODB_URI=mongodb://mongodb-primary:27017,mongodb-secondary1:27017,mongodb-secondary2:27017/myapp?replicaSet=rs0
       - APP_ID=app2
     networks:
       - app-network
     depends_on:
-      - mongodb
+      - mongodb-primary
+      - mongodb-setup
 
-  mongodb:
+  mongodb-primary:
     image: mongo:latest
+    command: ["--replSet", "rs0", "--bind_ip_all", "--port", "27017"]
     volumes:
-      - mongodb_data:/data/db
+      - mongodb_primary_data:/data/db
+      - mongodb_primary_config:/data/configdb
     networks:
       - app-network
     deploy:
@@ -30,6 +34,70 @@ services:
         limits:
           cpus: '1.0'
           memory: 1G
+    healthcheck:
+      test: echo "try { rs.status() } catch (err) { rs.initiate({_id:'rs0',members:[{_id:0,host:'mongodb-primary:27017',priority:2},{_id:1,host:'mongodb-secondary1:27017',priority:1},{_id:2,host:'mongodb-secondary2:27017',priority:1}]}) }" | mongosh --quiet
+      interval: 5s
+      timeout: 30s
+      start_period: 0s
+      start_interval: 1s
+      retries: 30
+
+  mongodb-secondary1:
+    image: mongo:latest
+    command: ["--replSet", "rs0", "--bind_ip_all", "--port", "27017"]
+    volumes:
+      - mongodb_secondary1_data:/data/db
+      - mongodb_secondary1_config:/data/configdb
+    networks:
+      - app-network
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+
+  mongodb-secondary2:
+    image: mongo:latest
+    command: ["--replSet", "rs0", "--bind_ip_all", "--port", "27017"]
+    volumes:
+      - mongodb_secondary2_data:/data/db
+      - mongodb_secondary2_config:/data/configdb
+    networks:
+      - app-network
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+
+  mongodb-setup:
+    image: mongo:latest
+    depends_on:
+      mongodb-primary:
+        condition: service_healthy
+      mongodb-secondary1:
+        condition: service_started
+      mongodb-secondary2:
+        condition: service_started
+    networks:
+      - app-network
+    command: >
+      mongosh --host mongodb-primary:27017 --eval '
+      while (!rs.status().ok) {
+        sleep(1000);
+        try {
+          rs.status();
+        } catch (err) {
+          rs.initiate({
+            _id: "rs0",
+            members: [
+              {_id: 0, host: "mongodb-primary:27017", priority: 2},
+              {_id: 1, host: "mongodb-secondary1:27017", priority: 1},
+              {_id: 2, host: "mongodb-secondary2:27017", priority: 1}
+            ]
+          });
+        }
+      }'
 
   nginx:
     image: nginx:alpine
@@ -43,7 +111,7 @@ services:
     depends_on:
       - app1
       - app2
-      - mongodb
+      - mongodb-primary
     networks:
       - app-network
     deploy:
@@ -63,7 +131,12 @@ services:
         max-file: "10"
 
 volumes:
-  mongodb_data:
+  mongodb_primary_data:
+  mongodb_secondary1_data:
+  mongodb_secondary2_data:
+  mongodb_primary_config:
+  mongodb_secondary1_config:
+  mongodb_secondary2_config:
 
 networks:
   app-network:
