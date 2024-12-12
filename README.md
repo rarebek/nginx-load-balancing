@@ -22,7 +22,8 @@ docker compose up --build
 
 ## Add to your hosts file (/etc/hosts on Linux/Mac or C:\Windows\System32\drivers\etc\hosts on Windows):
 
-```127.0.0.1 myapp.uz
+```
+127.0.0.1 myapp.uz
 127.0.0.1 my-mongodb.uz
 ```
 
