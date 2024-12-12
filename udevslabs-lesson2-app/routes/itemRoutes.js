@@ -58,11 +58,11 @@ const Item = require('../models/Item');
 
 router.get('/', async (req, res) => {
   try {
-    const items = await Item.find().limit(10);
-
-    
+    const items = await Item.find();
+    console.log('Retrieved items:', items); // Debug log
     res.json(items);
   } catch (err) {
+    console.error('Error fetching items:', err);
     res.status(500).json({ message: err.message });
   }
 });
@@ -122,7 +122,7 @@ router.post('/', async (req, res) => {
   const item = new Item({
     name: req.body.name,
     description: req.body.description,
-    quantity: req.body.quantity,
+    quantity: req.body.quantity
   });
 
   try {
